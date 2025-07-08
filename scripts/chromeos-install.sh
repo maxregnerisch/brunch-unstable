@@ -369,28 +369,28 @@ if [ "$type" == "Dualboot (create an image)" ]; then
 	config="menuentry \"Brunch\" --class \"brunch\" {$remove_tpm
 	img_path="$img_path"
 	img_uuid="$img_uuid"
-	search --no-floppy --set=root --file "\$img_path"
-	loopback loop "\$img_path"
+	search --no-floppy --set=root --file \"\$img_path\"
+	loopback loop \"\$img_path\"
 	source (loop,12)/efi/boot/settings.cfg
 	if [ -z \$verbose ] -o [ \$verbose -eq 0 ]; then
-		linux (loop,7)\$kernel boot=local noresume noswap loglevel=7 options=\$options chromeos_bootsplash=\$chromeos_bootsplash \$cmdline_params \\
-			cros_secure cros_debug img_uuid="\$img_uuid" img_path="\$img_path" \\
+		linux (loop,7)\$kernel boot=local noresume noswap loglevel=7 options=\$options chromeos_bootsplash=\$chromeos_bootsplash \$cmdline_params \\\\
+			cros_secure cros_debug img_uuid=\"\$img_uuid\" img_path=\"\$img_path\" \\\\
 			console= vt.global_cursor_default=0 brunch_bootsplash=\$brunch_bootsplash quiet
 	else
-		linux (loop,7)\$kernel boot=local noresume noswap loglevel=7 options=\$options chromeos_bootsplash=\$chromeos_bootsplash \$cmdline_params \\
-			cros_secure cros_debug img_uuid="\$img_uuid" img_path="\$img_path"
+		linux (loop,7)\$kernel boot=local noresume noswap loglevel=7 options=\$options chromeos_bootsplash=\$chromeos_bootsplash \$cmdline_params \\\\
+			cros_secure cros_debug img_uuid=\"\$img_uuid\" img_path=\"\$img_path\"
 	fi
 	initrd (loop,7)/lib/firmware/amd-ucode.img (loop,7)/lib/firmware/intel-ucode.img (loop,7)/initramfs.img
 }
 
 menuentry \"Brunch settings\" --class \"brunch-settings\" {$remove_tpm
-	img_path="$img_path"
-	img_uuid="$img_uuid"
-	search --no-floppy --set=root --file "\$img_path"
-	loopback loop "\$img_path"
+	img_path=\"$img_path\"
+	img_uuid=\"$img_uuid\"
+	search --no-floppy --set=root --file \"\$img_path\"
+	loopback loop \"\$img_path\"
 	source (loop,12)/efi/boot/settings.cfg
-	linux (loop,7)/kernel boot=local noresume noswap loglevel=7 options= chromeos_bootsplash= edit_brunch_config=1 \\
-		cros_secure cros_debug img_uuid="\$img_uuid" img_path="\$img_path"
+	linux (loop,7)/kernel boot=local noresume noswap loglevel=7 options= chromeos_bootsplash= edit_brunch_config=1 \\\\
+		cros_secure cros_debug img_uuid=\"\$img_uuid\" img_path=\"\$img_path\"
 	initrd (loop,7)/lib/firmware/amd-ucode.img (loop,7)/lib/firmware/intel-ucode.img (loop,7)/initramfs.img
 }"
 	echo -e "$config" > "$fullpath".grub.txt
