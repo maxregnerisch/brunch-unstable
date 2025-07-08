@@ -228,7 +228,7 @@ for (( i=1; i<=12; i++ )); do
 		;;
 		7)
 			source_start=0
-			image="$(dirname $0)/rootc.img"
+			image="$(dirname $0)/root.img"
 			size=$(du --apparent-size -B 512 $image | sed 's/\t.*//g')
 		;;
 		6|9|10|11)
@@ -321,7 +321,7 @@ for (( i=1; i<=12; i++ )); do
 			size=$(cgpt show -i 3 -s "$source_loop")
 		;;
 		7)
-			source_part="$(dirname $0)/rootc.img"
+			source_part="$(dirname $0)/root.img"
 			size=$(ls -lp --block-size=512 "$source_part" | cut -d" " -f5)
 		;;
 		6|9|10|11)
