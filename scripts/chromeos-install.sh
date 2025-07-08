@@ -227,9 +227,14 @@ for (( i=1; i<=12; i++ )); do
 			size=$(cgpt show -i 3 -s "$source")
 		;;
 		7)
+			image="$(dirname $0)/rootc.img"
+			if [ ! -f "$image" ]; then echo "rootc.img not found!"; exit 1; fi
 			source_start=0
-			image="$(dirname $0)/root.img"
-			size=$(du --apparent-size -B 512 $image | sed 's/\t.*//g')
+			size=$(du --apparent-size -B512 "$image" | cut -f1)
+			if [ "$size" -ge 6291456 ]; then
+				echo "Error: rootc.img is larger than 3GB. Aborting."
+				exit 1
+			fi
 		;;
 		6|9|10|11)
 			continue
@@ -321,7 +326,7 @@ for (( i=1; i<=12; i++ )); do
 			size=$(cgpt show -i 3 -s "$source_loop")
 		;;
 		7)
-			source_part="$(dirname $0)/root.img"
+			source_part="$(dirname $0)/rootc.img"
 			size=$(ls -lp --block-size=512 "$source_part" | cut -d" " -f5)
 		;;
 		6|9|10|11)
