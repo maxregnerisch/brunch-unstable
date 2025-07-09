@@ -77,8 +77,14 @@ print_status "Applying Ultra Cool OS enhancements..."
 # Make our custom patches executable
 chmod +x brunch-patches/85-ultra-cool-os-ui.sh
 chmod +x brunch-patches/86-ultra-cool-os-performance.sh
+chmod +x brunch-patches/87-ultra-cool-os-advanced.sh
 
-print_success "Ultra Cool OS patches prepared"
+# Make build scripts executable
+chmod +x build_rootc_img.sh
+chmod +x scripts/compress-optimize.sh
+chmod +x scripts/rootc-packager.py
+
+print_success "Ultra Cool OS patches and scripts prepared"
 
 # Build kernels with ultra-modern optimizations
 print_status "Building ultra-optimized kernels..."
@@ -244,6 +250,29 @@ Architecture: x86_64
 Compatibility: Universal Hardware Support
 EOF
 
+# Build 1GB rootc.img if requested
+if [ "$1" = "rootc" ] || [ "$2" = "rootc" ]; then
+    print_status "Building 1GB rootc.img..."
+    
+    if [ -f "./build_rootc_img.sh" ]; then
+        ./build_rootc_img.sh
+        
+        if [ $? -eq 0 ]; then
+            print_success "1GB rootc.img built successfully!"
+            
+            # Copy rootc.img to release directory
+            if [ -f "./out/rootc.img" ]; then
+                cp ./out/rootc.img* "$RELEASE_DIR/" 2>/dev/null || true
+                cp ./out/install_rootc.sh "$RELEASE_DIR/" 2>/dev/null || true
+            fi
+        else
+            print_warning "rootc.img build failed, continuing with standard build"
+        fi
+    else
+        print_warning "rootc.img builder not found, skipping"
+    fi
+fi
+
 print_success "Ultra Cool OS release package created"
 
 # Final build summary
@@ -271,4 +300,3 @@ print_success "Ultra Cool OS build process completed successfully!"
 
 echo ""
 echo -e "${PURPLE}Thank you for choosing Ultra Cool OS! 🌟${NC}"
-
