@@ -231,8 +231,8 @@ for (( i=1; i<=12; i++ )); do
 			if [ ! -f "$image" ]; then echo "rootc.img not found!"; exit 1; fi
 			source_start=0
 			size=$(du --apparent-size -B512 "$image" | cut -f1)
-			if [ "$size" -ge 6291456 ]; then
-				echo "Error: rootc.img is larger than 3GB. Aborting."
+			if [ "$size" -ge 2097152 ]; then
+				echo "Error: rootc.img is larger than 1GB. Aborting."
 				exit 1
 			fi
 		;;
