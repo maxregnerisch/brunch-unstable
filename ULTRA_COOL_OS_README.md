@@ -111,11 +111,17 @@ cd brunch-unstable
 # Switch to Ultra Cool OS branch
 git checkout codegen-bot/ultra-cool-os-macos26-mros2-glassy-*
 
-# Build Ultra Cool OS
+# Build Ultra Cool OS (standard)
 sudo ./build_ultra_cool_os.sh
 
-# Or build with specific ChromeOS recovery image
+# Build with specific ChromeOS recovery image
 sudo ./build_ultra_cool_os.sh /path/to/chromeos_recovery.bin
+
+# Build 1GB rootc.img (advanced)
+sudo ./build_ultra_cool_os.sh rootc
+
+# Build with recovery image AND rootc.img
+sudo ./build_ultra_cool_os.sh /path/to/chromeos_recovery.bin rootc
 ```
 
 ### Advanced Build Options
@@ -284,4 +290,3 @@ Ultra Cool OS is released under the MIT License. See [LICENSE](LICENSE) for deta
 **Ultra Cool OS** - Where elegance meets performance! 🌟
 
 *Built with ❤️ by the Ultra Cool OS Team*
-

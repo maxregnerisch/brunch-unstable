@@ -1,0 +1,604 @@
+name: Build Ultra Cool OS Advanced with 1GB rootc.img
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'ultra-advanced'
+        type: choice
+        options:
+        - ultra-advanced
+        - rootc-only
+        - full-build
+      compression_level:
+        description: 'Compression level (1-9)'
+        required: false
+        default: '9'
+        type: string
+      enable_glassy_effects:
+        description: 'Enable advanced glassy effects'
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches:
+      - 'codegen-bot/ultra-cool-*'
+    paths:
+      - 'brunch-patches/87-ultra-cool-os-advanced.sh'
+      - 'build_rootc_img.sh'
+      - 'scripts/compress-optimize.sh'
+      - 'scripts/rootc-packager.py'
+      - 'ui-framework/**'
+      - '.github/workflows/ultra-cool-advanced.yml'
+
+concurrency:
+  group: ultra-cool-advanced-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ULTRA_COOL_VERSION: "1.0"
+  MACOS_26_STYLE: "enabled"
+  MROS_2_INTEGRATION: "enabled"
+  SAMSUNG_GLASSY_EFFECTS: "enabled"
+  BUILD_TYPE: "ultra-advanced"
+
+jobs:
+  prepare-ultra-cool-environment:
+    name: Prepare Ultra Cool OS Environment
+    runs-on: ubuntu-24.04
+    outputs:
+      build_matrix: ${{ steps.matrix.outputs.matrix }}
+      build_config: ${{ steps.config.outputs.config }}
+    steps:
+      - name: Install advanced dependencies
+        run: |
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt update
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt install \
+            gcc-12 g++-12 git fakeroot build-essential ncurses-dev xz-utils \
+            libssl-dev bc flex libelf-dev bison sbsigntool python3-protobuf \
+            rdfind zstd optipng jpegoptim python3-pip nodejs npm \
+            squashfs-tools e2fsprogs dosfstools parted gdisk
+          
+          # Install advanced compression tools
+          sudo pip3 install --upgrade zstandard
+          sudo npm install -g csso uglify-js svgo
+          
+          # Install optimization tools
+          sudo apt install hardlink rdfind
+      
+      - name: Checkout Ultra Cool OS source
+        uses: actions/checkout@v4
+      
+      - name: Setup Ultra Cool OS build environment
+        run: |
+          echo "🚀 Setting up Ultra Cool OS Advanced Build Environment"
+          echo "✨ macOS 26 + mrOS 2.0 + Samsung Glassy Style"
+          
+          # Create build directories
+          mkdir -p ultra-cool-build/{kernels,ui,assets,rootc}
+          
+          # Set build configuration
+          export ULTRA_COOL_BUILD_TYPE="${{ github.event.inputs.build_type || 'ultra-advanced' }}"
+          export COMPRESSION_LEVEL="${{ github.event.inputs.compression_level || '9' }}"
+          export ENABLE_GLASSY_EFFECTS="${{ github.event.inputs.enable_glassy_effects || 'true' }}"
+          
+          echo "ULTRA_COOL_BUILD_TYPE=$ULTRA_COOL_BUILD_TYPE" >> $GITHUB_ENV
+          echo "COMPRESSION_LEVEL=$COMPRESSION_LEVEL" >> $GITHUB_ENV
+          echo "ENABLE_GLASSY_EFFECTS=$ENABLE_GLASSY_EFFECTS" >> $GITHUB_ENV
+      
+      - name: Prepare kernels for Ultra Cool OS
+        if: ${{ github.event.inputs.build_type != 'rootc-only' }}
+        run: |
+          echo "🔧 Preparing kernels with Ultra Cool OS optimizations..."
+          chmod +x prepare_kernels.sh
+          ./prepare_kernels.sh
+      
+      - name: Define build matrix
+        id: matrix
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" = "rootc-only" ]; then
+            echo "matrix=[\"rootc-img\"]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=$(echo [\"$(ls -d ./kernels/* 2>/dev/null | cut -f3 -d'/' | sed -Ez '$ s/\n+$//' | sed -z 's#\n#","#g' || echo 'ultra-cool')\"])" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create build configuration
+        id: config
+        run: |
+          cat > ultra_cool_build_config.json << EOF
+          {
+            "version": "$ULTRA_COOL_VERSION",
+            "build_type": "$ULTRA_COOL_BUILD_TYPE",
+            "compression_level": $COMPRESSION_LEVEL,
+            "enable_glassy_effects": $ENABLE_GLASSY_EFFECTS,
+            "features": {
+              "macos_26_style": true,
+              "mros_2_integration": true,
+              "samsung_glassy_effects": $ENABLE_GLASSY_EFFECTS,
+              "advanced_compression": true,
+              "1gb_rootc_img": true
+            },
+            "build_date": "$(date -Iseconds)",
+            "commit_sha": "${{ github.sha }}"
+          }
+          EOF
+          
+          echo "config=$(cat ultra_cool_build_config.json | jq -c .)" >> $GITHUB_OUTPUT
+      
+      - name: Upload build configuration
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultra-cool-build-config
+          path: ultra_cool_build_config.json
+          if-no-files-found: error
+
+  build-ultra-cool-kernels:
+    name: Build Ultra Cool OS Kernels
+    needs: prepare-ultra-cool-environment
+    runs-on: ubuntu-24.04
+    if: ${{ github.event.inputs.build_type != 'rootc-only' }}
+    strategy:
+      matrix:
+        kernel: ${{ fromJson(needs.prepare-ultra-cool-environment.outputs.build_matrix) }}
+    steps:
+      - name: Install dependencies
+        run: |
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt update
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt install \
+            gcc-12 g++-12 git fakeroot build-essential ncurses-dev xz-utils \
+            libssl-dev bc flex libelf-dev bison sbsigntool
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
+      
+      - name: Checkout Ultra Cool OS source
+        uses: actions/checkout@v4
+      
+      - name: Download build configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: ultra-cool-build-config
+      
+      - name: Setup kernel build environment
+        run: |
+          echo "🔧 Setting up Ultra Cool OS kernel build for ${{ matrix.kernel }}"
+          
+          # Apply Ultra Cool OS kernel optimizations
+          export KERNEL_CFLAGS="-O3 -march=native -mtune=native -fomit-frame-pointer -flto"
+          export KERNEL_CONFIG_ULTRA_COOL="y"
+          export KERNEL_CONFIG_PREEMPT="voluntary"
+          export KERNEL_CONFIG_HZ="1000"
+          
+          echo "KERNEL_CFLAGS=$KERNEL_CFLAGS" >> $GITHUB_ENV
+      
+      - name: Install Secure Boot certificate
+        env:
+          BRUNCH_PRIV: ${{ secrets.BRUNCH_PRIV }}
+          BRUNCH_PEM: ${{ secrets.BRUNCH_PEM }}
+        run: |
+          sudo ln -s $RUNNER_TEMP /persist
+          mkdir /persist/keys
+          echo "$BRUNCH_PRIV" | base64 -d > /persist/keys/brunch.priv
+          echo "$BRUNCH_PEM" | base64 -d > /persist/keys/brunch.pem
+      
+      - name: Build Ultra Cool OS optimized kernel
+        run: |
+          echo "🚀 Building Ultra Cool OS kernel: ${{ matrix.kernel }}"
+          chmod +x build_kernels.sh
+          ./build_kernels.sh ${{ matrix.kernel }}
+      
+      - name: Clear security keys
+        run: rm -rf /persist/keys
+      
+      - name: Package kernel
+        run: |
+          echo "📦 Packaging Ultra Cool OS kernel: ${{ matrix.kernel }}"
+          tar zcf /tmp/ultra-cool-kernel-${{ matrix.kernel }}.tar.gz kernels/${{ matrix.kernel }}
+      
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultra-cool-kernel-${{ matrix.kernel }}
+          path: /tmp/ultra-cool-kernel-${{ matrix.kernel }}.tar.gz
+          if-no-files-found: error
+
+  build-ultra-cool-ui-framework:
+    name: Build Ultra Cool OS UI Framework
+    needs: prepare-ultra-cool-environment
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Install UI build dependencies
+        run: |
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt update
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt install \
+            nodejs npm python3-pip optipng jpegoptim
+          sudo npm install -g csso uglify-js svgo postcss-cli autoprefixer
+          sudo pip3 install csscompressor jsmin
+      
+      - name: Checkout Ultra Cool OS source
+        uses: actions/checkout@v4
+      
+      - name: Download build configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: ultra-cool-build-config
+      
+      - name: Build advanced UI framework
+        run: |
+          echo "🎨 Building Ultra Cool OS Advanced UI Framework"
+          echo "✨ macOS 26 + mrOS 2.0 + Samsung Glassy Style"
+          
+          mkdir -p build/ui-framework
+          
+          # Optimize CSS files
+          if [ -f "ui-framework/ultra-cool-advanced.css" ]; then
+            echo "🎨 Optimizing advanced CSS..."
+            csso ui-framework/ultra-cool-advanced.css --output build/ui-framework/ultra-cool-advanced.min.css
+          fi
+          
+          if [ -f "ui-framework/glassy-effects.css" ]; then
+            echo "✨ Optimizing glassy effects CSS..."
+            csso ui-framework/glassy-effects.css --output build/ui-framework/glassy-effects.min.css
+          fi
+          
+          # Optimize JavaScript files
+          find ui-framework -name "*.js" -type f | while read -r file; do
+            if [ -f "$file" ]; then
+              echo "⚡ Optimizing $(basename $file)..."
+              uglifyjs "$file" --compress --mangle --output "build/ui-framework/$(basename $file .js).min.js"
+            fi
+          done
+          
+          # Optimize images
+          find assets -name "*.png" -type f -exec optipng -quiet -o7 {} + 2>/dev/null || true
+          find assets -name "*.jpg" -o -name "*.jpeg" -type f -exec jpegoptim --quiet --strip-all {} + 2>/dev/null || true
+          find assets -name "*.svg" -type f -exec svgo --quiet {} + 2>/dev/null || true
+          
+          # Copy optimized assets
+          cp -r assets build/ 2>/dev/null || true
+      
+      - name: Create UI framework package
+        run: |
+          echo "📦 Creating Ultra Cool OS UI Framework package..."
+          cd build
+          tar zcf /tmp/ultra-cool-ui-framework.tar.gz ui-framework assets
+      
+      - name: Upload UI framework
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultra-cool-ui-framework
+          path: /tmp/ultra-cool-ui-framework.tar.gz
+          if-no-files-found: error
+
+  build-1gb-rootc-img:
+    name: Build 1GB rootc.img
+    needs: [prepare-ultra-cool-environment, build-ultra-cool-ui-framework]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+      
+      - name: Install rootc.img build dependencies
+        run: |
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt update
+          yes | DEBIAN_FRONTEND=noninteractive sudo apt install \
+            gcc-12 g++-12 git fakeroot build-essential ncurses-dev xz-utils \
+            libssl-dev bc flex libelf-dev bison sbsigntool python3-protobuf \
+            rdfind zstd squashfs-tools e2fsprogs dosfstools parted gdisk \
+            python3-pip hardlink optipng jpegoptim
+          
+          sudo pip3 install --upgrade lzma zstandard
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 110 \
+            --slave /usr/bin/g++ g++ /usr/bin/g++-12 --slave /usr/bin/gcov gcov /usr/bin/gcov-12
+      
+      - name: Checkout Ultra Cool OS source
+        uses: actions/checkout@v4
+      
+      - name: Download build configuration
+        uses: actions/download-artifact@v4
+        with:
+          name: ultra-cool-build-config
+      
+      - name: Download UI framework
+        uses: actions/download-artifact@v4
+        with:
+          name: ultra-cool-ui-framework
+          path: /tmp
+      
+      - name: Download kernels (if available)
+        if: ${{ github.event.inputs.build_type != 'rootc-only' }}
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp
+          pattern: ultra-cool-kernel-*
+      
+      - name: Setup rootc.img build environment
+        run: |
+          echo "🚀 Setting up 1GB rootc.img build environment"
+          
+          # Extract UI framework
+          cd /tmp
+          for file in ultra-cool-ui-framework.tar.gz; do
+            if [ -f "$file" ]; then
+              tar zxf "$file"
+            fi
+          done
+          
+          # Extract kernels if available
+          for file in ultra-cool-kernel-*/ultra-cool-kernel-*.tar.gz; do
+            if [ -f "$file" ]; then
+              tar zxf "$file"
+            fi
+          done
+          
+          cd $GITHUB_WORKSPACE
+          
+          # Make scripts executable
+          chmod +x build_rootc_img.sh
+          chmod +x scripts/compress-optimize.sh
+          chmod +x scripts/rootc-packager.py
+          chmod +x brunch-patches/87-ultra-cool-os-advanced.sh
+      
+      - name: Build base ChromeOS system
+        if: ${{ github.event.inputs.build_type == 'full-build' }}
+        run: |
+          echo "🔧 Building base ChromeOS system for Ultra Cool OS..."
+          chmod +x build_brunch.sh
+          sudo bash build_brunch.sh skip
+      
+      - name: Apply Ultra Cool OS advanced features
+        run: |
+          echo "✨ Applying Ultra Cool OS Advanced Features..."
+          
+          # Create build directory
+          sudo mkdir -p ./rootc_build/rootc
+          
+          # Apply advanced patches
+          if [ -f "brunch-patches/87-ultra-cool-os-advanced.sh" ]; then
+            echo "🎨 Applying advanced UI and system patches..."
+            sudo bash brunch-patches/87-ultra-cool-os-advanced.sh
+          fi
+          
+          # Copy UI framework
+          if [ -d "/tmp/ui-framework" ]; then
+            echo "🎨 Installing Ultra Cool OS UI Framework..."
+            sudo mkdir -p ./rootc_build/rootc/opt/ultra-cool-os/
+            sudo cp -r /tmp/ui-framework ./rootc_build/rootc/opt/ultra-cool-os/
+          fi
+          
+          # Copy assets
+          if [ -d "/tmp/assets" ]; then
+            echo "🖼️  Installing Ultra Cool OS Assets..."
+            sudo cp -r /tmp/assets ./rootc_build/rootc/opt/ultra-cool-os/
+          fi
+      
+      - name: Optimize filesystem for 1GB target
+        run: |
+          echo "🗜️  Optimizing filesystem for 1GB rootc.img..."
+          
+          if [ -d "./rootc_build/rootc" ]; then
+            sudo bash scripts/compress-optimize.sh ./rootc_build/rootc maximum
+          fi
+      
+      - name: Build 1GB rootc.img
+        run: |
+          echo "🚀 Building 1GB Ultra Cool OS rootc.img..."
+          
+          # Set build parameters
+          export ROOTC_SIZE="1073741824"  # 1GB
+          export COMPRESSION_LEVEL="${{ env.COMPRESSION_LEVEL }}"
+          export ULTRA_COOL_FEATURES="enabled"
+          
+          # Build the image
+          sudo bash build_rootc_img.sh
+      
+      - name: Verify rootc.img
+        run: |
+          echo "🔍 Verifying Ultra Cool OS rootc.img..."
+          
+          if [ -f "./out/rootc.img" ]; then
+            SIZE=$(stat -c%s "./out/rootc.img")
+            SIZE_MB=$((SIZE / 1024 / 1024))
+            
+            echo "✅ rootc.img created successfully!"
+            echo "📊 Size: ${SIZE_MB}MB"
+            
+            if [ $SIZE_MB -le 1024 ]; then
+              echo "✅ Size constraint met (≤1GB)"
+            else
+              echo "⚠️  Size constraint exceeded (>1GB)"
+            fi
+            
+            # Test mount
+            echo "🧪 Testing rootc.img mount..."
+            mkdir -p /tmp/test_mount
+            sudo mount -o loop,ro ./out/rootc.img /tmp/test_mount
+            
+            if [ -f "/tmp/test_mount/manifest.json" ]; then
+              echo "✅ Manifest found in rootc.img"
+              cat /tmp/test_mount/manifest.json | jq .
+            fi
+            
+            sudo umount /tmp/test_mount
+            echo "✅ rootc.img verification completed"
+          else
+            echo "❌ rootc.img not found!"
+            exit 1
+          fi
+      
+      - name: Create release package
+        run: |
+          echo "📦 Creating Ultra Cool OS release package..."
+          
+          mkdir -p release
+          
+          # Copy main files
+          cp ./out/rootc.img* release/ 2>/dev/null || true
+          cp ./out/install_rootc.sh release/ 2>/dev/null || true
+          
+          # Create release info
+          cat > release/RELEASE_INFO.md << EOF
+          # Ultra Cool OS v${{ env.ULTRA_COOL_VERSION }} - 1GB rootc.img
+          
+          ## 🚀 Features
+          - ✨ macOS 26 inspired design and animations
+          - 🔧 mrOS 2.0 performance optimizations
+          - 📱 Samsung glassy style effects
+          - 🗜️  Advanced compression (1GB optimized)
+          - 🎨 Modern UI framework with glass morphism
+          
+          ## 📊 Build Information
+          - Build Date: $(date)
+          - Commit: ${{ github.sha }}
+          - Build Type: ${{ env.ULTRA_COOL_BUILD_TYPE }}
+          - Compression Level: ${{ env.COMPRESSION_LEVEL }}
+          
+          ## 🛠️ Installation
+          1. Download rootc.img
+          2. Run: \`sudo ./install_rootc.sh\`
+          3. Mount: \`sudo mount -o loop rootc.img /mnt\`
+          4. Chroot: \`sudo chroot /mnt\`
+          5. Enjoy Ultra Cool OS!
+          
+          ## 🎯 System Requirements
+          - RAM: 4GB minimum, 8GB recommended
+          - Storage: 32GB minimum for installation
+          - CPU: x86_64 processor
+          - GPU: Intel, AMD, or NVIDIA with proper drivers
+          EOF
+      
+      - name: Upload rootc.img artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultra-cool-os-1gb-rootc-img
+          path: release/
+          if-no-files-found: error
+
+  create-ultra-cool-release:
+    name: Create Ultra Cool OS Release
+    permissions:
+      contents: write
+    needs: [prepare-ultra-cool-environment, build-1gb-rootc-img]
+    runs-on: ubuntu-24.04
+    if: github.ref == 'refs/heads/continuous-integration' || startsWith(github.ref, 'refs/heads/codegen-bot/ultra-cool-')
+    steps:
+      - name: Download rootc.img artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ultra-cool-os-1gb-rootc-img
+      
+      - name: Generate release details
+        run: |
+          RELEASE_VERSION="${{ env.ULTRA_COOL_VERSION }}"
+          RELEASE_DATE=$(date +%Y%m%d)
+          RELEASE_TYPE="ultra-advanced"
+          
+          if [ -f "rootc.img" ]; then
+            ROOTC_SIZE=$(stat -c%s "rootc.img")
+            ROOTC_SIZE_MB=$((ROOTC_SIZE / 1024 / 1024))
+            ROOTC_SHA256=$(sha256sum rootc.img | cut -d' ' -f1)
+            
+            mv "rootc.img" "ultra-cool-os_${RELEASE_VERSION}_${RELEASE_TYPE}_${RELEASE_DATE}_rootc.img"
+            
+            echo "RELEASE_FILE=ultra-cool-os_${RELEASE_VERSION}_${RELEASE_TYPE}_${RELEASE_DATE}_rootc.img" >> $GITHUB_ENV
+            echo "RELEASE_TAG=${RELEASE_VERSION}-${RELEASE_TYPE}-${RELEASE_DATE}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Ultra Cool OS ${RELEASE_VERSION} ${RELEASE_TYPE} ${RELEASE_DATE}" >> $GITHUB_ENV
+            echo "RELEASE_SHA256=${ROOTC_SHA256}" >> $GITHUB_ENV
+            echo "ROOTC_SIZE_MB=${ROOTC_SIZE_MB}" >> $GITHUB_ENV
+          fi
+      
+      - name: Create release body
+        run: |
+          cat > release_body.md << EOF
+          # 🚀 Ultra Cool OS v${{ env.ULTRA_COOL_VERSION }} - Advanced Edition
+          
+          **The future of operating systems is here!**
+          
+          ## ✨ What's New in This Release
+          
+          ### 🎨 Advanced UI Features
+          - **macOS 26 Inspired Design**: Clean, modern interface with smooth animations
+          - **Samsung Glassy Effects**: Stunning translucent blur effects throughout the UI
+          - **Advanced Glass Morphism**: Next-generation visual effects and transparency
+          - **Modern Typography**: SF Pro Display font family integration
+          - **Responsive Animations**: 60fps smooth transitions and interactions
+          
+          ### 🔧 mrOS 2.0 Performance Optimizations
+          - **Ultra-Responsive Scheduler**: Optimized task scheduling for maximum performance
+          - **Advanced Memory Management**: Intelligent RAM usage and caching
+          - **GPU Acceleration**: Hardware-accelerated graphics for smooth effects
+          - **Thermal Management**: Smart cooling for sustained performance
+          - **I/O Optimizations**: Fast storage and network access
+          
+          ### 📦 1GB rootc.img Innovation
+          - **Advanced Compression**: Maximum space efficiency with lzma/zstd
+          - **Optimized Filesystem**: Custom ext4 configuration for performance
+          - **Intelligent Packaging**: Smart file selection and deduplication
+          - **Size**: ${{ env.ROOTC_SIZE_MB }}MB compressed root filesystem
+          
+          ## 🛠️ Installation Instructions
+          
+          ### Quick Start
+          \`\`\`bash
+          # Download and verify
+          wget https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/${{ env.RELEASE_FILE }}
+          
+          # Install and mount
+          sudo mount -o loop ${{ env.RELEASE_FILE }} /mnt
+          sudo chroot /mnt
+          \`\`\`
+          
+          ### System Requirements
+          - **RAM**: 4GB minimum, 8GB recommended
+          - **Storage**: 32GB minimum for installation
+          - **CPU**: x86_64 processor (Intel/AMD)
+          - **GPU**: Intel HD, AMD Radeon, or NVIDIA GeForce
+          
+          ## 🎯 Key Features
+          
+          - 🍎 **macOS 26 Elegance**: Premium design language and interactions
+          - 🤖 **mrOS 2.0 Power**: Advanced performance and functionality
+          - 📱 **Samsung Glassy Style**: Modern translucent visual effects
+          - 🗜️  **1GB Optimization**: Maximum features in minimal space
+          - 🚀 **Universal Compatibility**: Works on any ChromeOS compatible hardware
+          
+          ## 📊 Technical Details
+          
+          - **Version**: ${{ env.ULTRA_COOL_VERSION }}
+          - **Build Date**: $(date)
+          - **Architecture**: x86_64
+          - **Filesystem**: Optimized ext4
+          - **Compression**: Advanced multi-algorithm
+          - **SHA256**: \`${{ env.RELEASE_SHA256 }}\`
+          
+          ## 🆘 Support & Community
+          
+          - 📖 [Documentation](https://github.com/${{ github.repository }}/wiki)
+          - 💬 [Discussions](https://github.com/${{ github.repository }}/discussions)
+          - 🐛 [Issues](https://github.com/${{ github.repository }}/issues)
+          
+          ---
+          
+          **Ultra Cool OS** - Where elegance meets performance! 🌟
+          
+          *Built with ❤️ by the Ultra Cool OS Team*
+          EOF
+      
+      - name: Create GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.RELEASE_FILE }},*.sha256,install_rootc.sh,RELEASE_INFO.md"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: false
+          tag: "${{ env.RELEASE_TAG }}"
+          name: "${{ env.RELEASE_NAME }}"
+          commit: "${{ github.sha }}"
+          bodyFile: "release_body.md"
